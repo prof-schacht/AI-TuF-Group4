@@ -8,8 +8,6 @@ class EdgeDeviceOptimization:
     """
     Args:
         model_path: Pfad zum gespeicherten Modell
-        quantization_configuration: Konfiguration für Quantisierung
-        pruning_configuration: Konfiguration für Pruning
         export_path: Pfad zum Export des optimierten Modells
     """
 
@@ -20,12 +18,11 @@ class EdgeDeviceOptimization:
         self.model_path = model_path
         self.export_path = export_path
 
-        # Verschiedene Modelle die optimiert werden
         self.modelConverter = None
         self.tfLiteModel = None
         self.quantizedModel = None
 
-    def __load_model(self):
+    def __loadModel(self):
         """
         Lädt das Keras-Modell aus der angegebenen Datei.
         """
@@ -73,7 +70,7 @@ class EdgeDeviceOptimization:
         Führt die Konvertierung des Modells durch.
         """
         # Load the Keras model from the .h5 file
-        self.__load_model()
+        self.__loadModel()
         self.__ConverToTfLiteWithoutOptimization()
         self.__ConvertToTfLiteWithOptimization()
         self.__CompareModelSizes()
@@ -101,6 +98,6 @@ if __name__ == "__main__":
     model.save("models/my_model.h5")
 
     # Testen der Konvertierung
-    optimizer = EdgeDeviceOptimization(model_path="models/my_model.h5", export_path="models/")
+    optimizer = EdgeDeviceOptimization(model_path="models/my_model.h5", export_path="../edgeDevice/models/")
     optimizer.ConvertModel()
     print("Model conversion completed.")
