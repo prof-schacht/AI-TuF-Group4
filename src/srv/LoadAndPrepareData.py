@@ -1,8 +1,10 @@
 import pandas as pd
-import tensorflow as tf
-from typing import List, Optional
+import numpy as np
+from typing import Optional, List, Tuple
 from sklearn.preprocessing import MinMaxScaler
-
+import tensorflow as tf
+import logging
+logger = logging.getLogger(__name__)
 
 class LoadAndPrepareData:
 
@@ -25,7 +27,17 @@ class LoadAndPrepareData:
                  split_ratios: tuple = (0.7, 0.15, 0.15),
                  window_size: int = 24,
                  horizon: int = 6,
-                 batch_size: int = 32):
+                 batch_size: int = 32,
+                 test_mode: bool = False,
+                 test_subset: int = None):
+
+        # In test mode, override batch_size and resample_rule for robustness
+        if test_mode:
+            if test_subset is None:
+                test_subset = 1000
+            logger.info(f"[LoadAndPrepareData] test_mode: batch_size={batch_size}, resample_rule={resample_rule}, test_subset={test_subset}")
+
+
 
         self.filepath = filepath
         self.sep = sep
@@ -34,12 +46,14 @@ class LoadAndPrepareData:
         else:
             self.na_values = na_values
         self.resample_rule = resample_rule
+        self.test_subset = test_subset
         self.split_ratios = split_ratios
         self.window_size = window_size
         self.horizon = horizon
         self.batch_size = batch_size
         self.date_col: str = "Date"
         self.time_col: str = "Time"
+        self.test_mode = test_mode
 
         # Placeholder
         self.df = None
@@ -68,6 +82,11 @@ class LoadAndPrepareData:
         self.df.set_index('datetime', inplace=True)
         self.df.drop(columns=[self.date_col, self.time_col], inplace=True)
         self.df.interpolate(method='time', inplace=True)
+
+        # If test_mode is enabled, keep only the first test_subset rows
+        if self.test_mode:
+            self.df = self.df.iloc[:self.test_subset]
+            logger.info(f"[LoadAndPrepareData] test_mode: DataFrame shape after slicing: {self.df.shape}")
 
     def resample(self):
         self.df_resampled = self.df.resample(self.resample_rule).mean()
@@ -105,9 +124,15 @@ class LoadAndPrepareData:
         validation_ds = self.make_tf_dataset(self.val_scaled)
         testing_ds = self.make_tf_dataset(self.test_scaled)
 
-        # print("Train scaled  → min, max:", self.train_scaled.min(), self.train_scaled.max())
-        # print("Valid scaled  → min, max:", self.val_scaled.min(),   self.val_scaled.max())
-        # print("Test  scaled  → min, max:", self.test_scaled.min(),  self.test_scaled.max())
+        # Print number of batches in each dataset for debug
+        def count_batches(ds):
+            return sum(1 for _ in ds)
+        n_train = count_batches(training_ds)
+        n_val = count_batches(validation_ds)
+        n_test = count_batches(testing_ds)
+        logger.info(f"[LoadAndPrepareData] Batches - train: {n_train}, val: {n_val}, test: {n_test}")
+        if n_train == 0 or n_val == 0 or n_test == 0:
+            logger.warning("[LoadAndPrepareData] One or more datasets are empty! Consider increasing test subset or reducing window/horizon/batch size.")
 
         return training_ds, validation_ds, testing_ds
 
