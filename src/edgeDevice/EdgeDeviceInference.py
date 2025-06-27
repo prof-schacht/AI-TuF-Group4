@@ -96,5 +96,4 @@ class EdgeDeviceInference:
         Das Input-Shape wird automatisch aus dem Modell gelesen.
         """
         self.__loadModel()
-        #input_data = self.__createDummyInput()
         return self.__runInference(input_data)
