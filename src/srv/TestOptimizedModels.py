@@ -1,16 +1,9 @@
-"""
-TestOptimizedModels - Klasse zum Testen und Validieren optimierter Modelle
-
-Diese Klasse enthält alle Funktionen zur Validierung von TFLite-Modellen
-gegen echte Testdaten und zum Vergleich zwischen normalem und quantisiertem Modell.
-"""
-
 from src.edgeDevice.EdgeDeviceInference import EdgeDeviceInference
 import numpy as np
 import pandas as pd
 import os
 from .LoadAndPrepareData import LoadAndPrepareData
-
+import tensorflow as tf
 
 class TestOptimizedModels:
     """
@@ -44,7 +37,7 @@ class TestOptimizedModels:
         else:
             self.training_data_path = training_data_path
     
-    def make_prediction_with_test_data(self, model_path, model_name="TFLite", show_output=True):
+    def make_prediction_with_test_data(self, model_path, model_name="TFLite", show_output=True, num_test_samples=10):
         """
         Macht eine Vorhersage mit echten Testdaten aus dem Trainingsdatensatz.
         
@@ -52,6 +45,7 @@ class TestOptimizedModels:
             model_path (str): Pfad zum TFLite-Modell
             model_name (str): Name des Modells für die Ausgabe
             show_output (bool): Ob die Ausgabe angezeigt werden soll
+            num_test_samples (int): Anzahl der Testbeispiele für robustere Evaluation
             
         Returns:
             dict: Enthält prediction_times, feature_names, y_pred_original, y_true_original, timestamps
@@ -76,37 +70,62 @@ class TestOptimizedModels:
         train_ds, val_ds, test_ds = training_loader.get_datasets()
         scaler = training_loader.get_scaler()
         
-        # 2. Nimm ein Beispiel aus den Testdaten
-        for batch_x, batch_y in test_ds.take(1):
+        # 2. Sammle mehrere Testbeispiele für robustere Evaluation
+        all_predictions = []
+        all_ground_truth = []
+        test_count = 0
+        
+        if show_output:
+            print(f"Collecting {num_test_samples} test samples for robust evaluation...")
+        
+        for batch_x, batch_y in test_ds:
+            if test_count >= num_test_samples:
+                break
+                
             x_input = batch_x.numpy().astype(np.float32)
             y_true = batch_y.numpy()
-            break
+            
+            # 3. Vorhersage mit TFLite-Modell
+            inference = EdgeDeviceInference(model_path)
+            y_pred = inference.run(x_input)
+            
+            all_predictions.append(y_pred)
+            all_ground_truth.append(y_true)
+            test_count += 1
+            
+        if show_output:
+            print(f"Collected {test_count} test samples")
+            
+        # Kombiniere alle Vorhersagen
+        y_pred_combined = np.concatenate(all_predictions, axis=0)
+        y_true_combined = np.concatenate(all_ground_truth, axis=0)
         
         if show_output:
-            print(f"Test data shape: Input {x_input.shape}, Target {y_true.shape}")
-        
-        # 3. Vorhersage mit TFLite-Modell
-        if show_output:
-            print(f"Making prediction with {model_name}...")
-        inference = EdgeDeviceInference(model_path)
-        y_pred = inference.run(x_input)
+            print(f"Combined test data shape: Input {y_pred_combined.shape}, Target {y_true_combined.shape}")
         
         # 4. Rücktransformation auf Originalskala
-        y_pred_flat = y_pred.reshape(-1, y_pred.shape[-1])
+        y_pred_flat = y_pred_combined.reshape(-1, y_pred_combined.shape[-1])
         y_pred_original = scaler.inverse_transform(y_pred_flat)
         
-        y_true_flat = y_true.reshape(-1, y_true.shape[-1])
+        y_true_flat = y_true_combined.reshape(-1, y_true_combined.shape[-1])
         y_true_original = scaler.inverse_transform(y_true_flat)
         
-        # 5. Erstelle realistische Zeitstempel (verwende aktuelles Datum)
-        start_prediction = pd.Timestamp("2023-06-01 12:00:00")  # Beispiel-Zeitstempel aus Testdaten
-        prediction_times = [start_prediction + pd.Timedelta(hours=i) for i in range(self.horizon)]
+        # 5. Erstelle realistische Zeitstempel für alle Vorhersagen
+        start_prediction = pd.Timestamp("2023-06-01 12:00:00")
+        prediction_times = []
+        for sample_idx in range(test_count):
+            for hour_idx in range(self.horizon):
+                timestamp = start_prediction + pd.Timedelta(hours=sample_idx*24 + hour_idx)
+                prediction_times.append(timestamp)
         
-        # 6. Ausgabe der Ergebnisse mit Farben (nur wenn gewünscht)
+        # 6. Ausgabe der Ergebnisse (nur erste paar Beispiele anzeigen)
         if show_output:
+            # Zeige nur die ersten 6 Zeitpunkte für bessere Übersicht
+            display_limit = min(6, len(prediction_times))
             self._display_prediction_results(
-                prediction_times, training_loader.df_resampled.columns, 
-                y_pred_original, y_true_original, model_name
+                prediction_times[:display_limit], training_loader.df_resampled.columns, 
+                y_pred_original[:display_limit], y_true_original[:display_limit], 
+                f"{model_name} (erste {display_limit} von {len(prediction_times)} Vorhersagen)"
             )
         
         # Rückgabe der Ergebnisse
@@ -192,6 +211,109 @@ class TestOptimizedModels:
         print(f"\n{BOLD}GESAMT: MAE = {overall_mae:.3f}, RMSE = {overall_rmse:.3f}{RESET}")
         print(f"{model_name} Validierung abgeschlossen.\n")
     
+    def make_prediction_with_keras_model(self, model_path, model_name="Keras", show_output=True, num_test_samples=10):
+        """
+        Macht eine Vorhersage mit dem ursprünglichen Keras-Modell.
+        
+        Args:
+            model_path (str): Pfad zum Keras-Modell (.h5 Datei)
+            model_name (str): Name des Modells für die Ausgabe
+            show_output (bool): Ob die Ausgabe angezeigt werden soll
+            num_test_samples (int): Anzahl der Testbeispiele für robustere Evaluation
+            
+        Returns:
+            dict: Enthält prediction_times, feature_names, y_pred_original, y_true_original, timestamps
+        """
+        if show_output:
+            print(f"\n{'='*80}")
+            print(f"  {model_name} VALIDIERUNG MIT ECHTEN TESTDATEN")
+            print(f"{'='*80}")
+        
+        # 1. Lade die Trainingsdaten und erstelle Testset
+        if show_output:
+            print("Loading training data and creating test set...")
+        training_loader = LoadAndPrepareData(
+            filepath=self.training_data_path,
+            window_size=self.window_size,
+            horizon=self.horizon,
+            batch_size=1,
+            resample_rule=self.resample_rule
+        )
+        
+        # Lade Datasets
+        train_ds, val_ds, test_ds = training_loader.get_datasets()
+        scaler = training_loader.get_scaler()
+        
+        # 2. Sammle mehrere Testbeispiele für robustere Evaluation
+        all_predictions = []
+        all_ground_truth = []
+        test_count = 0
+        
+        if show_output:
+            print(f"Collecting {num_test_samples} test samples for robust evaluation...")
+            print(f"Loading and predicting with {model_name}...")
+        
+        # Lade das Keras-Modell einmal
+        keras_model = tf.keras.models.load_model(model_path)
+        
+        for batch_x, batch_y in test_ds:
+            if test_count >= num_test_samples:
+                break
+                
+            x_input = batch_x.numpy().astype(np.float32)
+            y_true = batch_y.numpy()
+            
+            # 3. Vorhersage mit Keras-Modell
+            y_pred = keras_model.predict(x_input, verbose=0)
+            
+            all_predictions.append(y_pred)
+            all_ground_truth.append(y_true)
+            test_count += 1
+            
+        if show_output:
+            print(f"Collected {test_count} test samples")
+            
+        # Kombiniere alle Vorhersagen
+        y_pred_combined = np.concatenate(all_predictions, axis=0)
+        y_true_combined = np.concatenate(all_ground_truth, axis=0)
+        
+        if show_output:
+            print(f"Combined test data shape: Input {y_pred_combined.shape}, Target {y_true_combined.shape}")
+        
+        # 4. Rücktransformation auf Originalskala
+        y_pred_flat = y_pred_combined.reshape(-1, y_pred_combined.shape[-1])
+        y_pred_original = scaler.inverse_transform(y_pred_flat)
+        
+        y_true_flat = y_true_combined.reshape(-1, y_true_combined.shape[-1])
+        y_true_original = scaler.inverse_transform(y_true_flat)
+        
+        # 5. Erstelle realistische Zeitstempel für alle Vorhersagen
+        start_prediction = pd.Timestamp("2023-06-01 12:00:00")
+        prediction_times = []
+        for sample_idx in range(test_count):
+            for hour_idx in range(self.horizon):
+                timestamp = start_prediction + pd.Timedelta(hours=sample_idx*24 + hour_idx)
+                prediction_times.append(timestamp)
+        
+        # 6. Ausgabe der Ergebnisse (nur erste paar Beispiele anzeigen)
+        if show_output:
+            # Zeige nur die ersten 6 Zeitpunkte für bessere Übersicht
+            display_limit = min(6, len(prediction_times))
+            self._display_prediction_results(
+                prediction_times[:display_limit], training_loader.df_resampled.columns, 
+                y_pred_original[:display_limit], y_true_original[:display_limit], 
+                f"{model_name} (erste {display_limit} von {len(prediction_times)} Vorhersagen)"
+            )
+        
+        # Rückgabe der Ergebnisse
+        return {
+            'prediction_times': prediction_times,
+            'feature_names': training_loader.df_resampled.columns,
+            'y_pred_original': y_pred_original,
+            'y_true_original': y_true_original,
+            'model_name': model_name
+        }
+    
     def evaluate_model_accuracy(self, model_results):
         """
         Bewertet die Genauigkeit eines Modells gegen Ground Truth.
@@ -211,16 +333,7 @@ class TestOptimizedModels:
         y_pred = model_results['y_pred_original']
         y_true = model_results['y_true_original']
         
-        # Detaillierte Vergleichstabelle
-        print(f"\n{'='*100}")
-        print("VORHERSAGE vs GROUND TRUTH - DETAILVERGLEICH")
-        print(f"{'='*100}")
-        
-        header = f"{'Zeitpunkt':<18}{'Feature':<20}{'Vorhersage':<15}{'Ground Truth':<15}{'Abs. Fehler':<12}{'Rel. Fehler %':<12}"
-        print(f"\n{header}")
-        print("-" * len(header))
-        
-        # Sammle Fehlerstatistiken pro Feature
+        # Sammle Fehlerstatistiken (ohne detaillierte Ausgabe)
         feature_errors = {feature: [] for feature in feature_names}
         all_absolute_errors = []
         all_relative_errors = []
@@ -235,16 +348,6 @@ class TestOptimizedModels:
                 feature_errors[feature].append(abs_error)
                 all_absolute_errors.append(abs_error)
                 all_relative_errors.append(rel_error)
-                
-                # Formatiere Werte
-                time_str = time.strftime('%d.%m %H:%M') if j == 0 else ""
-                feature_short = feature[:18] if len(feature) > 18 else feature
-                
-                row = f"{time_str:<18}{feature_short:<20}{pred_val:<15.3f}{true_val:<15.3f}{abs_error:<12.3f}{rel_error:<12.2f}%"
-                print(row)
-            
-            if i < len(prediction_times) - 1:
-                print("-" * len(header))
         
         # Gesamtstatistiken
         print(f"\n{'='*100}")
@@ -349,22 +452,25 @@ class TestOptimizedModels:
         print(f"und eine mittlere absolute Abweichung von {overall_mae:.3f}.")
         print(f"\n{'='*100}\n")
     
-    def compare_model_accuracies(self, normal_accuracy, quantized_accuracy, normal_results, quantized_results):
+    def compare_model_accuracies(self, keras_accuracy, normal_accuracy, quantized_accuracy, keras_results, normal_results, quantized_results):
         """
-        Vergleicht die Genauigkeitsbewertungen beider Modelle.
+        Vergleicht die Genauigkeitsbewertungen aller drei Modelle.
         
         Args:
+            keras_accuracy (dict): Genauigkeitsstatistiken des Keras-Modells
             normal_accuracy (dict): Genauigkeitsstatistiken des normalen Modells
             quantized_accuracy (dict): Genauigkeitsstatistiken des quantisierten Modells
+            keras_results (dict): Vollständige Ergebnisse des Keras-Modells
             normal_results (dict): Vollständige Ergebnisse des normalen Modells
             quantized_results (dict): Vollständige Ergebnisse des quantisierten Modells
         """
         # Vergleichstabelle der Hauptmetriken
         print(f"\n{'='*80}")
-        print("GENAUIGKEITSVERGLEICH")
+        print("GENAUIGKEITSVERGLEICH ALLER DREI MODELLE")
         print(f"{'='*80}")
         
-        comparison_header = f"{'Metrik':<25}{'Normal':<15}{'Quantisiert':<15}{'Unterschied':<15}{'Gewinner':<10}"
+        # 3-Modell-Vergleich
+        comparison_header = f"{'Metrik':<12}{'Keras':<12}{'Normal TFLite':<15}{'Quantized TFLite':<17}{'Bester':<10}"
         print(f"\n{comparison_header}")
         print("-" * len(comparison_header))
         
@@ -374,109 +480,62 @@ class TestOptimizedModels:
         RED = '\033[91m'
         
         # MAE Vergleich
-        mae_diff = quantized_accuracy['mae'] - normal_accuracy['mae']
-        mae_winner = "Normal" if mae_diff > 0 else "Quantisiert"
-        mae_color = GREEN if mae_winner == "Normal" else RED
+        mae_values = [keras_accuracy['mae'], normal_accuracy['mae'], quantized_accuracy['mae']]
+        mae_best_idx = mae_values.index(min(mae_values))
+        mae_names = ["Keras", "Normal", "Quantized"]
+        mae_winner = mae_names[mae_best_idx]
         
-        # RMSE Vergleich
-        rmse_diff = quantized_accuracy['rmse'] - normal_accuracy['rmse']
-        rmse_winner = "Normal" if rmse_diff > 0 else "Quantisiert"
-        rmse_color = GREEN if rmse_winner == "Normal" else RED
+        # RMSE Vergleich  
+        rmse_values = [keras_accuracy['rmse'], normal_accuracy['rmse'], quantized_accuracy['rmse']]
+        rmse_best_idx = rmse_values.index(min(rmse_values))
+        rmse_winner = mae_names[rmse_best_idx]
         
         # MAPE Vergleich
-        mape_diff = quantized_accuracy['mape'] - normal_accuracy['mape']
-        mape_winner = "Normal" if mape_diff > 0 else "Quantisiert"
-        mape_color = GREEN if mape_winner == "Normal" else RED
+        mape_values = [keras_accuracy['mape'], normal_accuracy['mape'], quantized_accuracy['mape']]
+        mape_best_idx = mape_values.index(min(mape_values))
+        mape_winner = mae_names[mape_best_idx]
         
         comparison_data = [
-            ["MAE", f"{normal_accuracy['mae']:.3f}", f"{quantized_accuracy['mae']:.3f}", f"{mae_diff:+.3f}", f"{mae_color}{mae_winner}{RESET}"],
-            ["RMSE", f"{normal_accuracy['rmse']:.3f}", f"{quantized_accuracy['rmse']:.3f}", f"{rmse_diff:+.3f}", f"{rmse_color}{rmse_winner}{RESET}"],
-            ["MAPE (%)", f"{normal_accuracy['mape']:.2f}", f"{quantized_accuracy['mape']:.2f}", f"{mape_diff:+.2f}", f"{mape_color}{mape_winner}{RESET}"],
+            ["MAE", f"{keras_accuracy['mae']:.3f}", f"{normal_accuracy['mae']:.3f}", f"{quantized_accuracy['mae']:.3f}", f"{GREEN}{mae_winner}{RESET}"],
+            ["RMSE", f"{keras_accuracy['rmse']:.3f}", f"{normal_accuracy['rmse']:.3f}", f"{quantized_accuracy['rmse']:.3f}", f"{GREEN}{rmse_winner}{RESET}"],
+            ["MAPE (%)", f"{keras_accuracy['mape']:.2f}", f"{normal_accuracy['mape']:.2f}", f"{quantized_accuracy['mape']:.2f}", f"{GREEN}{mape_winner}{RESET}"],
         ]
         
         for row in comparison_data:
-            print(f"{row[0]:<25}{row[1]:<15}{row[2]:<15}{row[3]:<15}{row[4]:<10}")
+            print(f"{row[0]:<12}{row[1]:<12}{row[2]:<15}{row[3]:<17}{row[4]:<10}")
+            
+        # Zusammenfassung der Modellkonvertierung
+        print(f"\n{BOLD}ZUSAMMENFASSUNG DER MODELLKONVERTIERUNG:{RESET}")
+        print(f"Original Keras Modell → TFLite Normal → TFLite Quantized")
+        
+        keras_to_normal_mae = normal_accuracy['mae'] - keras_accuracy['mae']
+        normal_to_quantized_mae = quantized_accuracy['mae'] - normal_accuracy['mae']
+        
+        print(f"MAE Änderung: Keras→Normal: {keras_to_normal_mae:+.3f}, Normal→Quantized: {normal_to_quantized_mae:+.3f}")
     
-    def _display_quantization_impact(self, normal_accuracy, quantized_accuracy):
+    def run_full_validation(self, normal_model_path, quantized_model_path, keras_model_path):
         """
-        Zeigt die Auswirkungen der Quantisierung an.
-        
-        Args:
-            normal_accuracy (dict): Genauigkeitsstatistiken des normalen Modells
-            quantized_accuracy (dict): Genauigkeitsstatistiken des quantisierten Modells
-        """
-        print(f"\n{'='*80}")
-        print("QUANTISIERUNGSAUSWIRKUNG")
-        print(f"{'='*80}")
-        
-        # Berechne Verschlechterungsgrad
-        mae_diff = quantized_accuracy['mae'] - normal_accuracy['mae']
-        rmse_diff = quantized_accuracy['rmse'] - normal_accuracy['rmse']
-        mape_diff = quantized_accuracy['mape'] - normal_accuracy['mape']
-        
-        mae_degradation = (mae_diff / normal_accuracy['mae'] * 100) if normal_accuracy['mae'] > 0 else 0
-        rmse_degradation = (rmse_diff / normal_accuracy['rmse'] * 100) if normal_accuracy['rmse'] > 0 else 0
-        mape_degradation = (mape_diff / normal_accuracy['mape'] * 100) if normal_accuracy['mape'] > 0 else 0
-        
-        avg_degradation = (mae_degradation + rmse_degradation + mape_degradation) / 3
-        
-        print(f"\nVerschlechterung durch Quantisierung:")
-        print(f"MAE: {mae_degradation:+.1f}%")
-        print(f"RMSE: {rmse_degradation:+.1f}%") 
-        print(f"MAPE: {mape_degradation:+.1f}%")
-        print(f"Durchschnitt: {avg_degradation:+.1f}%")
-        
-        # Gesamtempfehlung
-        print(f"\n{'='*80}")
-        print("EMPFEHLUNG")
-        print(f"{'='*80}")
-        
-        RESET = '\033[0m'
-        BOLD = '\033[1m'
-        GREEN = '\033[92m'
-        RED = '\033[91m'
-        
-        if abs(avg_degradation) < 2:
-            recommendation = "QUANTISIERUNG EMPFOHLEN - Minimaler Genauigkeitsverlust"
-            rec_color = GREEN
-        elif abs(avg_degradation) < 5:
-            recommendation = "QUANTISIERUNG AKZEPTABEL - Geringer Genauigkeitsverlust"
-            rec_color = '\033[93m'  # Gelb
-        elif abs(avg_degradation) < 10:
-            recommendation = "QUANTISIERUNG ÜBERDENKEN - Moderater Genauigkeitsverlust"
-            rec_color = '\033[94m'  # Blau
-        else:
-            recommendation = "QUANTISIERUNG NICHT EMPFOHLEN - Hoher Genauigkeitsverlust"
-            rec_color = RED
-        
-        print(f"{rec_color}{BOLD}{recommendation}{RESET}")
-        
-        if avg_degradation < 0:
-            print(f"\n✓ Das quantisierte Modell ist überraschenderweise genauer als das normale Modell!")
-        else:
-            print(f"\n• Das quantisierte Modell verliert {avg_degradation:.1f}% Genauigkeit im Durchschnitt")
-        
-        print(f"• Modellgröße und Geschwindigkeit vs. Genauigkeit abwägen")
-        print(f"• Für Produktionsumgebungen: {recommendation.split(' - ')[0]}")
-        print(f"\n{'='*90}\n")
-    
-    def run_full_validation(self, normal_model_path, quantized_model_path):
-        """
-        Führt eine vollständige Validierung beider Modelle durch.
+        Führt eine vollständige Validierung aller drei Modelle durch.
         
         Args:
             normal_model_path (str): Pfad zum normalen TFLite-Modell
             quantized_model_path (str): Pfad zum quantisierten TFLite-Modell
+            keras_model_path (str): Pfad zum ursprünglichen Keras-Modell
             
         Returns:
-            tuple: (normal_accuracy, quantized_accuracy) - Genauigkeitsstatistiken beider Modelle
+            tuple: (keras_accuracy, normal_accuracy, quantized_accuracy) - Genauigkeitsstatistiken aller Modelle
         """
         print("\n" + "="*90)
         print("VOLLSTÄNDIGE MODELLVALIDIERUNG MIT ECHTEN TESTDATEN")
         print("="*90)
-        print("Hier wird die tatsächliche Genauigkeit der Modelle gegen bekannte Ground Truth gemessen")
+        print("Hier wird die tatsächliche Genauigkeit aller drei Modelle gegen bekannte Ground Truth gemessen")
+        print("HINWEIS: Für robustere Ergebnisse werden mehrere Testbeispiele verwendet (Standard: 10)")
+        print("="*90)
         
-        # Validierung mit echten Testdaten
+        # Validierung mit echten Testdaten für alle drei Modelle
+        keras_test_results = self.make_prediction_with_keras_model(
+            keras_model_path, "URSPRÜNGLICHES KERAS MODELL", show_output=True
+        )
         normal_test_results = self.make_prediction_with_test_data(
             normal_model_path, "NORMALES TFLite MODELL", show_output=True
         )
@@ -484,19 +543,23 @@ class TestOptimizedModels:
             quantized_model_path, "QUANTISIERTES TFLite MODELL", show_output=True
         )
         
-        if normal_test_results and quantized_test_results:
+        if keras_test_results and normal_test_results and quantized_test_results:
             # Bewerte jedes Modell einzeln gegen Ground Truth
             print("\n" + "="*90)
-            print("EINZELBEWERTUNG DER MODELLE GEGEN GROUND TRUTH")
+            print("EINZELBEWERTUNG ALLER MODELLE GEGEN GROUND TRUTH")
             print("="*90)
             
+            keras_accuracy = self.evaluate_model_accuracy(keras_test_results)
             normal_accuracy = self.evaluate_model_accuracy(normal_test_results)
             quantized_accuracy = self.evaluate_model_accuracy(quantized_test_results)
             
-            # Vergleiche die Genauigkeiten beider Modelle
-            self.compare_model_accuracies(normal_accuracy, quantized_accuracy, normal_test_results, quantized_test_results)
+            # Vergleiche die Genauigkeiten aller drei Modelle
+            self.compare_model_accuracies(
+                keras_accuracy, normal_accuracy, quantized_accuracy,
+                keras_test_results, normal_test_results, quantized_test_results
+            )
             
-            return normal_accuracy, quantized_accuracy
+            return keras_accuracy, normal_accuracy, quantized_accuracy
         else:
-            print("Konnte nicht beide Modelle mit Testdaten validieren.")
-            return None, None
+            print("Konnte nicht alle drei Modelle mit Testdaten validieren.")
+            return None, None, None
