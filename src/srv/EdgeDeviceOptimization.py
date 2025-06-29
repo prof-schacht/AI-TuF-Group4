@@ -83,12 +83,3 @@ class EdgeDeviceOptimization:
         self.__ConverToTfLiteWithoutOptimization()
         self.__ConvertToTfLiteWithOptimization()
         self.__CompareModelSizes()
-
-
-# Temporary Test
-if __name__ == "__main__":
-
-    # Konvertieren des Modells
-    optimizer = EdgeDeviceOptimization(model_path="models/best_model.keras", export_path="../edgeDevice/models/")
-    optimizer.ConvertModel()
-    print("Model conversion completed.")
