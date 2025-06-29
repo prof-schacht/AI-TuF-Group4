@@ -24,7 +24,7 @@ Um die Konvertierung des Keras Modells auszuführen, muss der Code in der Datei 
 ...\AI-TuF-Group4>python -m src.srv.OptimizeModel
 ```
 
-### Ausführen des auf Edge-Device
+### Ausführen der Demo auf dem Edge-Device
 
 Um den Code auf einem EdgeDevice wie z.B. einem RaspberryPi auszuführen, werden alle Dateien aus dem Ordner `/edgeDevice` benötigt. Zusätzlich wird noch die Klasse `LoadAndPrepareData` und die Dateien `household_power_consumption.txt` und `prediction_input_example.csv` benötigt. Die Ordnerstruktur auf dem Zielgerät muss gleich aufgebaut sein wie in diesem Projekt.
 Über das Modul `main` wird eine Demo gestartet, die Daten für den 01.06.2025 12:00 Uhr bis 17:00 Uhr vorhersagt.
@@ -51,7 +51,7 @@ Das ursprüngliche trainierte Modell.
 def __ConverToTfLiteWithoutOptimization(self):
 ```
 
-<img src="src/edgeDevice/models/Vergleich_KerasModel_TFLiteModel.png" alt="Standard TFLite Model Architecture" width="600">
+<img src="src/edgeDevice/models/Vergleich_KerasModel_TFLiteModel.PNG" alt="Standard TFLite Model Architecture" width="600">
 
 *TFLite-Modell nach Graph-Optimierung und Metadaten-Entfernung*
 
@@ -169,12 +169,9 @@ Die `main.py` demonstriert eine vollständige Inferenz-Pipeline:
 2. **Vergleichende Vorhersagen**:
    - Ausführung mit Standard-TFLite-Modell
    - Ausführung mit quantisiertem TFLite-Modell
-   - Gegenüberstellung der Ergebnisse
 
 3. **Ergebnisvisualisierung**:
    - Farbkodierte Ausgabe für verschiedene Features (Global_active_power, Global_reactive_power, etc.)
    - Zeitstempel-basierte Darstellung der Vorhersagen
    - Rücktransformation auf Originalskala für interpretierbare Werte
-
-**Anwendungsfall**: Die Edge-Device Implementierung ermöglicht lokale Energieverbrauchsprognosen ohne Internetverbindung, ideal für Smart-Home-Systeme oder industrielle IoT-Anwendungen mit strengen Latenz- und Datenschutzanforderungen.
 
