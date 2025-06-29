@@ -67,6 +67,9 @@ class EdgeDeviceOptimization:
         """
         Vergleicht die Größe des Originalmodells mit der Größe des quantisierten Modells.
         """
+        print("=" * 80)
+        print("Model Size Comparison:")
+        print("=" * 80)
         print(f"Original model size: {os.path.getsize(self.model_path)/1024} KB")
         print(f"TFLite model (without optimizations) size: {os.path.getsize(self.export_path + '/model.tflite')/1024} KB")
         print(f"Quantized model size: {os.path.getsize(self.export_path + '/model_quantized.tflite')/1024} KB")
@@ -86,6 +89,6 @@ class EdgeDeviceOptimization:
 if __name__ == "__main__":
 
     # Konvertieren des Modells
-    optimizer = EdgeDeviceOptimization(model_path="models/best_model.h5", export_path="../edgeDevice/models/")
+    optimizer = EdgeDeviceOptimization(model_path="models/best_model.keras", export_path="../edgeDevice/models/")
     optimizer.ConvertModel()
     print("Model conversion completed.")

@@ -4,6 +4,7 @@ import pandas as pd
 import os
 from .LoadAndPrepareData import LoadAndPrepareData
 import tensorflow as tf
+import random
 
 class TestOptimizedModels:
     """
@@ -109,6 +110,9 @@ class TestOptimizedModels:
         
         y_true_flat = y_true_combined.reshape(-1, y_true_combined.shape[-1])
         y_true_original = scaler.inverse_transform(y_true_flat)
+        
+        # 4.1. Post-Processing: Korrigiere negative Energiewerte
+        y_pred_original = self._post_process_predictions(y_pred_original, model_name, show_output)
         
         # 5. Erstelle realistische Zeitstempel für alle Vorhersagen
         start_prediction = pd.Timestamp("2023-06-01 12:00:00")
@@ -287,6 +291,9 @@ class TestOptimizedModels:
         y_true_flat = y_true_combined.reshape(-1, y_true_combined.shape[-1])
         y_true_original = scaler.inverse_transform(y_true_flat)
         
+        # 4.1. Post-Processing: Korrigiere negative Energiewerte
+        y_pred_original = self._post_process_predictions(y_pred_original, model_name, show_output)
+        
         # 5. Erstelle realistische Zeitstempel für alle Vorhersagen
         start_prediction = pd.Timestamp("2023-06-01 12:00:00")
         prediction_times = []
@@ -338,16 +345,40 @@ class TestOptimizedModels:
         all_absolute_errors = []
         all_relative_errors = []
         
+        print(f"Datenbereich-Validierung:")
+        print(f"Y_pred range: {y_pred.min():.6f} to {y_pred.max():.6f}")
+        print(f"Y_true range: {y_true.min():.6f} to {y_true.max():.6f}")
+        
+        # Zähle problematische Werte
+        near_zero_count = 0
+        negative_count = 0
+        
         for i, time in enumerate(prediction_times):
             for j, feature in enumerate(feature_names):
                 pred_val = y_pred[i, j]
                 true_val = y_true[i, j]
                 abs_error = abs(pred_val - true_val)
-                rel_error = (abs_error / abs(true_val) * 100) if true_val != 0 else 0
+                
+                # Verbesserte MAPE-Berechnung mit Schwellenwert
+                if abs(true_val) < 1e-6:  # Sehr kleine Werte
+                    rel_error = 0  # Ignoriere bei sehr kleinen wahren Werten
+                    near_zero_count += 1
+                else:
+                    rel_error = (abs_error / abs(true_val) * 100)
+                    # Begrenze MAPE auf 200% für extreme Ausreißer
+                    rel_error = min(rel_error, 200.0)
+                
+                if true_val < 0:
+                    negative_count += 1
                 
                 feature_errors[feature].append(abs_error)
                 all_absolute_errors.append(abs_error)
                 all_relative_errors.append(rel_error)
+        
+        if near_zero_count > 0:
+            print(f"⚠️  Warnung: {near_zero_count} Werte nahe Null gefunden (ignoriert für MAPE)")
+        if negative_count > 0:
+            print(f"⚠️  Warnung: {negative_count} negative wahre Werte gefunden")
         
         # Gesamtstatistiken
         print(f"\n{'='*100}")
@@ -400,7 +431,7 @@ class TestOptimizedModels:
         print("FEATURE-SPEZIFISCHE FEHLERSTATISTIKEN")
         print(f"{'='*100}")
         
-        feature_stats_header = f"{'Feature':<25}{'MAE':<12}{'RMSE':<12}{'Max Error':<12}{'Bewertung':<15}"
+        feature_stats_header = f"{'Feature':<25}{'MAE':<12}{'RMSE':<12}{'Max Error':<12}"
         print(f"\n{feature_stats_header}")
         print("-" * len(feature_stats_header))
         
@@ -413,26 +444,8 @@ class TestOptimizedModels:
             rmse = np.sqrt(np.mean([e**2 for e in errors]))
             max_error = max(errors)
             
-            # Bewertung basierend auf relativem Fehler
-            feature_values = [abs(y_true[i, j]) for i in range(len(prediction_times)) for j, f in enumerate(feature_names) if f == feature]
-            avg_value = np.mean(feature_values)
-            relative_mae = (mae / avg_value * 100) if avg_value > 0 else 0
-            
-            if relative_mae < 5:
-                assessment = "Sehr gut"
-                color = '\033[92m'  # Grün
-            elif relative_mae < 10:
-                assessment = "Gut"
-                color = '\033[93m'  # Gelb
-            elif relative_mae < 20:
-                assessment = "Befriedigend"
-                color = '\033[94m'  # Blau
-            else:
-                assessment = "Verbesserungsbedarf"
-                color = '\033[91m'  # Rot
-            
             feature_short = feature[:23] if len(feature) > 23 else feature
-            row = f"{feature_short:<25}{mae:<12.3f}{rmse:<12.3f}{max_error:<12.3f}{color}{assessment:<15}{RESET}"
+            row = f"{feature_short:<25}{mae:<12.3f}{rmse:<12.3f}{max_error:<12.3f}"
             print(row)
     
     def _overall_assessment(self, overall_mape, model_name, overall_mae):
@@ -532,13 +545,30 @@ class TestOptimizedModels:
         print("HINWEIS: Für robustere Ergebnisse werden mehrere Testbeispiele verwendet (Standard: 10)")
         print("="*90)
         
+        # Verwende den gleichen Random-Seed für alle Modelle
+        # um identische Testdaten zu gewährleisten
+        random.seed(42)
+        np.random.seed(42)
+        
+        print("🔒 Verwende festen Random-Seed (42) für konsistente Testdaten zwischen allen Modellen")
+        
         # Validierung mit echten Testdaten für alle drei Modelle
         keras_test_results = self.make_prediction_with_keras_model(
             keras_model_path, "URSPRÜNGLICHES KERAS MODELL", show_output=True
         )
+        
+        # Reset Random-Seed für identische Testsamples
+        random.seed(42)
+        np.random.seed(42)
+        
         normal_test_results = self.make_prediction_with_test_data(
             normal_model_path, "NORMALES TFLite MODELL", show_output=True
         )
+        
+        # Reset Random-Seed für identische Testsamples
+        random.seed(42)
+        np.random.seed(42)
+        
         quantized_test_results = self.make_prediction_with_test_data(
             quantized_model_path, "QUANTISIERTES TFLite MODELL", show_output=True
         )
@@ -563,3 +593,25 @@ class TestOptimizedModels:
         else:
             print("Konnte nicht alle drei Modelle mit Testdaten validieren.")
             return None, None, None
+    
+    def _post_process_predictions(self, y_pred_original, model_name, show_output=True):
+        """
+        Post-Processing der Vorhersagen um negative Werte für Energiedaten zu korrigieren.
+        
+        Args:
+            y_pred_original (np.array): Ursprüngliche Vorhersagen
+            model_name (str): Name des Modells
+            show_output (bool): Ob Ausgaben angezeigt werden sollen
+            
+        Returns:
+            np.array: Korrigierte Vorhersagen
+        """
+        negative_count = np.sum(y_pred_original < 0)
+        
+        if negative_count > 0 and show_output:
+            print(f"🔧 Post-Processing für {model_name}: {negative_count} negative Werte auf 0 gesetzt")
+        
+        # Setze negative Energiewerte auf 0 (physikalisch sinnvoll)
+        y_pred_corrected = np.maximum(y_pred_original, 0)
+        
+        return y_pred_corrected

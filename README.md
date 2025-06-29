@@ -14,6 +14,27 @@
 
 ## Edge-Optimierung
 
+Die Edge-Optimierung besteht aus zwei Teilen. Zum einen die Konvertierung des Keras Modells in eine TensorFlow-Lite Modell und zum anderen die Ausführung auf einem Edge-Gerät. In diesem Beispile wurde dabei ein RaspberryPi verwendet. 
+
+### Ausführen der Konvertierung
+
+Um die Konvertierung des Keras Modells auszuführen, muss der Code in der Datei `OptimizeModel.py` ausgeführt werden. Dabei werden dann die Methoden der Klasse `EdgeDeviceOptimization` und `TestOptimizedModels` ausgeführt. 
+
+```
+...\AI-TuF-Group4>python -m src.srv.OptimizeModel
+```
+
+### Ausführen des auf Edge-Device
+
+Um den Code auf einem EdgeDevice wie z.B. einem RaspberryPi auszuführen, werden alle Dateien aus dem Ordner `/edgeDevice` benötigt. Zusätzlich wird noch die Klasse `LoadAndPrepareData` und die Dateien `household_power_consumption.txt` und `prediction_input_example.csv` benötigt. Die Ordnerstruktur auf dem Zielgerät muss gleich aufgebaut sein wie in diesem Projekt.
+Über das Modul `main` wird eine Demo gestartet, die Daten für den 01.06.2025 12:00 Uhr bis 17:00 Uhr vorhersagt.
+
+```
+...\AI-TuF-Group4>python -m src.edgeDevice.main
+```
+
+Zu Testzwecken, kann das Script auch auf einem normalen Rechner ausgeführt werden. Dabei wird dann anstatt der TensorFlow-Lite Runtime die normale TensorFlow integration verwendet. 
+
 ### Modelloptimierung mit EdgeDeviceOptimization
 
 Die `EdgeDeviceOptimization` Klasse konvertiert trainierte Keras-Modelle (.h5) in optimierte TensorFlow Lite (TFLite) Formate für den Einsatz auf Edge-Geräten. Dabei werden zwei verschiedene Optimierungsstufen angeboten:
