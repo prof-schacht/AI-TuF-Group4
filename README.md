@@ -1,10 +1,81 @@
 # Kurzfrist-Energieverbrauchs-Prognose und Deployment auf Edge-Geräten
 
-## Vorbereiten der Daten
-...
+## Datenaufbereitung
+Die Klasse "LoadAndPrepareData" beinhaltet alle Schritte, um die Roh-Zeitreihen aus der UCI „Household Power Consumption“–Datei 
+aufzubereiten und in ein für TensorFlow geeignetes Format zu bringen:
+### 1. Hauptaufgaben
+#### 1. Einlesen & Bereinigung
+- Liest die Roh-Zeitreihen aus der .txt-Datei ein
+- Kombiniert Date + Time zu einem Datetime Timestamp
+- Interpoliert fehlende Werte entlang der Zeitachse 
+- (Optional im Test-Modus) Einschränkung des DataFrames auf die ersten N Zeilen zur schnelleren Validierung
 
-## Auswahl des Modells 
-...
+#### 2. Resampling
+- Aggregiert bei Bedarf minütliche Messungen auf eine gröbere Frequenz (z.B. auf Stundenwerte)
+
+#### 3. Zeitreihen-Split
+- Teilt die aggregierten Timeseries in Training / Validation / Test Splits im Verhältnis 0.7, 0.15 und 0.15
+- Wichtig: zeitlich getrennt, um Data-Leakage zu vermeiden
+
+#### 4. Feature-Scaling
+- Gewährleistet über Skalierung, dass alle Features (z. B. Global_active_power, Voltage, Sub_metering_*) in vergleichbarem Wertebereich liegen
+
+#### 5. Sliding-Window-Erzeugung
+- Baut ein Zeitbereich auf und zerlegt jeden Zeitbereich in Input der Länge window_size und Target der Länge horizon
+- Durchmischt die Zeitbereiche und packt sie in Batches
+- Liefert Tensorflow Dataset-Objekte, die direkt in weitere Tensorflow Methoden wie z.B. model.fit() eingesetzt werden können
+
+
+### 2. Parameter der Klasse
+| Parameter       | Beschreibung                                                                             |
+|-----------------|------------------------------------------------------------------------------------------|
+| `filepath`      | Pfad zur heruntergeladenen UCI-Datei (`.txt`)                                            |
+| `na_values`     | List\[str], z. B. `["?"]`; strings, die als `NaN` gelesen werden                         |
+| `resample_rule` | Resampling-Regel: `"h"` = Stunden, `"min"` = Minuten, etc.                               |
+| `split_ratios`  | `(Train, Val, Test)` als Anteile der Gesamtlänge, Gesamtsumme = 1.0                      |
+| `window_size`   | Anzahl vergangener Zeitschritte, die als Input ins Modell gehen                          |
+| `horizon`       | Anzahl künftiger Zeitschritte, die das Modell vorhersagen soll                           |
+| `batch_size`    | Anzahl Zeitbereiche pro Batch                                                            |
+| `test_mode`     | Wenn `True`, werden nur `test_subset` Zeilen geladen – ideal für schnelle Pipeline-Tests |
+
+
+### 3. Methodenübersicht
+| Parameter                     | Beschreibung                                                                                                                                |
+|-------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `load_and_clean()`            | Daten einlesen + Timestamp Aggregierung + Interpolation                                                                                     |
+| `resample()`                  | Aggregation der Daten auf die gewählte Frequenz                                                                                             |
+| `split()`                     | Aufteilung der Zeitreihen in Trainings-, Validierungs- und Test-spilts                                                                      |
+| `scale()`                     | MinMax-Skalierung der Daten                                                                                                                 |
+| `make_tf_dataset(data_array)` | Aufbau von Zeitbereichen, Durschmischung, Zusammenfassung in Batches und transformation in Tensorflow format                                |
+| `get_datasets()`              | Ruft alle notwendigen Datenaufarbeitungsschritte in der korrekten Reihenfolge auf und gibt Trainings-, Validierungs- und Test-spilts zurück |
+| `get_scaler()`                | Liefert den MinMaxScaler, für inverse Transformation von Vorhersagen                                                                        |
+
+
+### 4. Beispiel Aufruf
+```python
+from LoadAndPrepareData import LoadAndPrepareData
+
+loader = LoadAndPrepareData(
+    filepath="data/household_power_consumption.txt",
+    window_size=24,
+    horizon=6,
+    batch_size=32,
+)
+
+train_ds, val_ds, test_ds = loader.get_datasets()
+scaler = loader.get_scaler()
+```
+
+
+## Modellauswahl
+Für die kurzfristige Prognose des Energieverbrauchs wurden drei Modell-Varianten ausgewählt:
+
+| Modell      | Beschreibung                                               | Vorteile                                                                                                  | Nachteile                                                                                         |
+|-------------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
+| **LSTM**    | Long Short-Term Memory mit Speicher- und Vergessens-Tor    | • Sehr gute Modellierung langer Abhängigkeiten<br>• Gut etabliert in Forecast-Tasks                       | • Viele Parameter → langsameres Training und Inferenz<br>• Höherer Speicherbedarf beim Deployment |
+| **Bi-LSTM** | Bidirektionales LSTM (Vorwärts- & Rückwärts-Pfad)          | • Nutzt Kontext aus Vergangenheit und „Zukunft“<br>• Oft bessere Genauigkeit bei zyklischen Mustern       | • Doppelter Rechen- und Speicheraufwand<br>• Schwerer auf Edge-Geräten einsetzbar                 |
+| **GRU**     | Gated Recurrent Unit mit nur zwei Toren (Update & Reset)   | • Weniger Parameter → schnelleres Training & Inferenz<br>• Einfachere Komprimierung für Edge- Optimierung | • In Einzelfällen leicht niedrigere Genauigkeit als LSTM        n                                 |
+
 
 ## Hyperparameter-Suche
 ...
