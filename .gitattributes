@@ -1,1 +1,4 @@
 data/household_power_consumption.txt filter=lfs diff=lfs merge=lfs -text
+data/wandb/** filter=lfs diff=lfs merge=lfs -text
+data/tuner_results/** filter=lfs diff=lfs merge=lfs -text
+data/logs/** filter=lfs diff=lfs merge=lfs -text
