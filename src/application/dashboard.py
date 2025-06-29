@@ -19,22 +19,9 @@ st.cache_resource.clear()
 # ----- Konfiguration -----
 DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/household_power_consumption.txt"))
 KERAS_MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src/srv/models/best_model.keras"))
-REEXPORTED_MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src/srv/models/best_model_reexport.keras"))
 TFLITE_MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src/edgeDevice/models/model.tflite"))
 WINDOW_SIZE = 24
 DEFAULT_HORIZON = 6
-
-# ----- Reexportiere Modell bei Bedarf -----
-if not os.path.exists(REEXPORTED_MODEL_PATH):
-    try:
-        with st.spinner("Reexportiere Keras-Modell ohne time_major..."):
-            original_model = load_model(KERAS_MODEL_PATH, compile=False)
-            original_model.save(REEXPORTED_MODEL_PATH)
-            st.success("✅ Modell erfolgreich reexportiert.")
-    except Exception as e:
-        st.error(f"❌ Fehler beim Reexportieren des Modells: {e}")
-else:
-    st.info("ℹ️ Reexportiertes Modell bereits vorhanden.")
 
 # ----- Streamlit UI Setup -----
 st.set_page_config(page_title="Power Forecast Dashboard", layout="wide")
@@ -135,7 +122,7 @@ col3.metric("R²", f"{r2_score(y_true_orig, y_pred_orig):.2f}")
 if show_feature_importance:
     st.subheader("\U0001F50D Feature Importance via Integrated Gradients")
     with st.spinner("Berechne IG-Attribution..."):
-        keras_model = load_model(REEXPORTED_MODEL_PATH, compile=False)
+        keras_model = load_model(KERAS_MODEL_PATH, compile=False)
         ig = integrated_gradients(keras_model, x_input)
         fig, ax = plt.subplots(figsize=(10, 3))
         im = ax.imshow(ig.T, cmap="viridis", aspect="auto")
