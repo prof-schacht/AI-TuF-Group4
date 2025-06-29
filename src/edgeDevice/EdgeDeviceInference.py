@@ -77,23 +77,10 @@ class EdgeDeviceInference:
 
         return output_data
 
-    def __createDummyInput(self):
-        """
-        Erstellt Dummy-Eingabedaten für die Inferenz.
-        
-        Args:
-            shape: Form der Eingabedaten
-        """
-        inputDetails, _ = self.__getInputOutputDetails()
-        shape = tuple(inputDetails[0]['shape'])
-
-        return np.random.random_sample(shape).astype(np.float32)
-
-    def run(self):
+    def run(self, input_data: np.ndarray):
         """
         Führt die Inferenz mit Dummy-Eingabedaten aus.
         Das Input-Shape wird automatisch aus dem Modell gelesen.
         """
         self.__loadModel()
-        input_data = self.__createDummyInput()
         return self.__runInference(input_data)
