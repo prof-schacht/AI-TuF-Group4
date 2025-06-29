@@ -7,7 +7,7 @@ import argparse
 
 # --- Configuration ---
 DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/household_power_consumption.txt"))
-MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./models/best_model.h5"))
+MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./models/best_model.keras"))
 
 parser = argparse.ArgumentParser(description="Test model prediction with correct window size and preprocessing.")
 parser.add_argument('--test_mode', action='store_true', help='Use test mode parameters (match test-mode-trained model)')

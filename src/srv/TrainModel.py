@@ -11,8 +11,21 @@ from LoadAndPrepareData import LoadAndPrepareData
 import argparse
 import logging
 
+# Define paths
+WANDB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/wandb"))
+TUNER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/tuner_results"))
+LOGS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/logs"))
+
+# Ensure directories exist
+os.makedirs(WANDB_DIR, exist_ok=True)
+os.makedirs(TUNER_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+# Configure wandb to use the specified directory
+os.environ["WANDB_DIR"] = WANDB_DIR
+
 # Setup logging
-log_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "train_run.log"))
+log_path = os.path.join(LOGS_DIR, "train_run.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -22,6 +35,8 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
 
 class PowerConsumptionModel:
     """
@@ -101,13 +116,18 @@ class PowerConsumptionModel:
         input_shape_serializable = tuple(self.input_shape) if self.input_shape is not None else None
         output_shape_serializable = tuple(self.output_shape) if self.output_shape is not None else None
         logger.info(f"Initializing W&B with input_shape={input_shape_serializable}, output_shape={output_shape_serializable}")
-        wandb.init(project=self.project_name, config={
-            "window_size": self.window_size,
-            "horizon": self.horizon,
-            "batch_size": self.batch_size,
-            "input_shape": input_shape_serializable,
-            "output_shape": output_shape_serializable
-        })
+        wandb.init(
+            project=self.project_name,
+            config={
+                "window_size": self.window_size,
+                "horizon": self.horizon,
+                "batch_size": self.batch_size,
+                "input_shape": input_shape_serializable,
+                "output_shape": output_shape_serializable
+            },
+            dir=WANDB_DIR
+            # Note: To make the project public, manually set it in the W&B web interface
+        )
     
     def build_model(self, hp):
         """
@@ -256,7 +276,7 @@ class PowerConsumptionModel:
             objective='val_loss',
             max_trials=self.max_trials,
             executions_per_trial=self.executions_per_trial,
-            directory='tuner_results',
+            directory=TUNER_DIR,
             project_name=self.project_name
         )
         
@@ -291,7 +311,7 @@ class PowerConsumptionModel:
         
         return best_hps
     
-    def train_best_model(self, best_hps, epochs=100, model_save_path="/Users/sebastiangerz/CascadeProjects/AI-TuF-Group4/src/srv/models/best_model.h5"):
+    def train_best_model(self, best_hps, epochs=100, model_save_path="/Users/sebastiangerz/CascadeProjects/AI-TuF-Group4/src/srv/models/best_model.keras"):
         """
         Train model with best hyperparameters and explicitly save it
         
@@ -363,6 +383,10 @@ class PowerConsumptionModel:
         """
         # Tune hyperparameters
         best_hps = self.tune_hyperparameters(epochs=epochs_tune)
+
+        print("Best hyperparameters found:")
+        for hp_name, hp_value in best_hps.values.items():
+            print(f"{hp_name}: {hp_value}")
         
         # Train best model
         model, history = self.train_best_model(best_hps, epochs=epochs_train)
@@ -413,7 +437,7 @@ if __name__ == "__main__":
         window_size=window_size,
         horizon=horizon,
         batch_size=batch_size,
-        project_name="power-consumption-forecasting",
+        project_name="power-consumption-forecasting-prod",
         max_trials=10,   # Number of hyperparameter tuning trials
         executions_per_trial=2,  # Number of executions per trial to reduce variance
         use_wandb=True,  # Enable W&B for full training
@@ -425,11 +449,15 @@ if __name__ == "__main__":
     
     # Run experiment
     model, metrics = trainer.run_experiment(
-        epochs_tune=3 if args.test_mode else 30,  # Fewer epochs if test_mode
+        epochs_tune=3 if args.test_mode else 50,  # Fewer epochs if test_mode
         epochs_train=5 if args.test_mode else 100  # Fewer epochs if test_mode
     )
     
+    logger.info("Experiment completed.")
+    print("Model architecture:")
+    model.summary()
     logger.info(f"Test Loss: {metrics['test_loss']:.4f}")
     logger.info(f"Test MAE: {metrics['test_mae']:.4f}")
+
     if args.test_mode:
         logger.info("Test run complete. For full training, rerun without --test_mode.")
