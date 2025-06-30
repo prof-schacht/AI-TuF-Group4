@@ -1,23 +1,23 @@
 import pandas as pd
-import numpy as np
-from typing import Optional, List, Tuple
+from typing import Optional, List
 from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 import logging
 logger = logging.getLogger(__name__)
 
+
 class LoadAndPrepareData:
 
     """
     Args:
-        filepath: Pfad zur .txt-Datei
-        sep: Separator im file
-        na_values: Zeichen für Missing Values im file
-        resample_rule: Pandas-Aggregierungs-Regel (z.B. "h"=Stunde)
-        split_ratios: Anteile für Train/Val/Test
-        window_size: Länge der Input-Sequenz (Zeitschritte)
-        horizon: Länge der Vorhersage (Zeitschritte)
-        batch_size: Batch-Größe
+        filepath: Path to the .txt file
+        sep: Separator in the file
+        na_values: Character for missing values in the file
+        resample_rule: Pandas aggregation rule (e.g., "h" = hour)
+        split_ratios: Ratios for train/val/test
+        window_size: Length of the input sequence (time steps)
+        horizon: Length of the prediction (time steps)
+        batch_size: Batch size
     """
     def __init__(self,
                  filepath: str,
@@ -36,8 +36,6 @@ class LoadAndPrepareData:
             if test_subset is None:
                 test_subset = 1000
             logger.info(f"[LoadAndPrepareData] test_mode: batch_size={batch_size}, resample_rule={resample_rule}, test_subset={test_subset}")
-
-
 
         self.filepath = filepath
         self.sep = sep
@@ -138,20 +136,3 @@ class LoadAndPrepareData:
 
     def get_scaler(self):
         return self.scaler
-
-
-# Temporary test
-# TODO: remove
-if __name__ == "__main__":
-    print("Initialize...")
-    loader = LoadAndPrepareData(
-        filepath="../../data/household_power_consumption.txt",
-        window_size=24,
-        horizon=6,
-        batch_size=32
-    )
-    print("Load Data...")
-    train_ds, val_ds, test_ds = loader.get_datasets()
-
-    print("Result:")
-    print(train_ds.element_spec)

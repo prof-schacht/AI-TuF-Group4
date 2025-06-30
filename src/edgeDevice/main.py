@@ -6,7 +6,7 @@ import os
 import sys
 from src.srv.LoadAndPrepareData import LoadAndPrepareData
 
-def make_prediction_with_model(model_path, model_name="TFLite", show_output=True):
+def make_prediction_with_model(model_path, model_name="TFLite", show_output=True, scaler=None):
     """
     Macht eine Vorhersage für 01.06.2025 12:00-18:00 mit einem spezifischen Modell.
     
@@ -14,36 +14,25 @@ def make_prediction_with_model(model_path, model_name="TFLite", show_output=True
         model_path (str): Pfad zum TFLite-Modell
         model_name (str): Name des Modells für die Ausgabe
         show_output (bool): Ob die Ausgabe angezeigt werden soll
+        scaler: Scaler-Objekt aus den Trainingsdaten
         
     Returns:
         dict: Enthält prediction_times, feature_names, y_pred_original
     """
     if show_output:
         print(f"\n{'='*80}")
-        print(f"  {model_name} VORHERSAGE - 01.06.2025 12:00-18:00")
+        print(f"  {model_name} VORHERSAGE - 01.06.2025 12:00-17:00")
         print(f"{'='*80}")
     
     # Pfade
     EXAMPLE_DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/prediction_input_example.csv"))
-    TRAINING_DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/household_power_consumption.txt"))
-    
     window_size = 24
     horizon = 6
     resample_rule = "h"
     
-    # 1. Lade den Scaler aus den ursprünglichen Trainingsdaten
-    if show_output:
-        print("Loading scaler from training data...")
-    training_loader = LoadAndPrepareData(
-        filepath=TRAINING_DATA_PATH,
-        window_size=window_size,
-        horizon=horizon,
-        batch_size=1,
-        resample_rule=resample_rule
-    )
-    # Scaler wird durch get_datasets() initialisiert
-    _, _, _ = training_loader.get_datasets()
-    scaler = training_loader.get_scaler()
+    # 1. Prüfe ob Scaler übergeben wurde
+    if scaler is None:
+        raise ValueError("Scaler muss als Argument übergeben werden!")
     
     # 2. Prüfe ob Beispieldaten existieren
     if not os.path.exists(EXAMPLE_DATA_PATH):
@@ -168,14 +157,30 @@ if __name__ == "__main__":
     # Pfade zu den Modellen
     MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./models/model.tflite"))
     QUANTIZED_MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "./models/model_quantized.tflite"))
+    TRAINING_DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/household_power_consumption.txt"))
+    
+    window_size = 24
+    horizon = 6
+    resample_rule = "h"
+
+    # Lade den Scaler EINMAL
+    print("Lade Scaler aus Trainingsdaten...")
+    training_loader = LoadAndPrepareData(
+        filepath=TRAINING_DATA_PATH,
+        window_size=window_size,
+        horizon=horizon,
+        batch_size=1,
+        resample_rule=resample_rule
+    )
+    _, _, _ = training_loader.get_datasets()
+    scaler = training_loader.get_scaler()
     
     # VORHERSAGE MIT BEISPIELDATEN
     print("\n" + "="*90)
     print("VORHERSAGE MIT BEISPIELDATEN")
     print("="*90)
-    print("Hier wird eine Vorhersage für zukünftige Zeitpunkte gemacht (01.06.2025 12:00-18:00)")
+    print("Hier wird eine Vorhersage für zukünftige Zeitpunkte gemacht (01.06.2025 12:00-17:00)")
     
     # Vorhersage mit Beispieldaten (mit Ausgabe)
-    normal_results = make_prediction_with_model(MODEL_PATH, "NORMALES TFLite MODELL", show_output=True)
-    quantized_results = make_prediction_with_model(QUANTIZED_MODEL_PATH, "QUANTISIERTES TFLite MODELL", show_output=True)
-    
+    normal_results = make_prediction_with_model(MODEL_PATH, "NORMALES TFLite MODELL", show_output=True, scaler=scaler)
+    quantized_results = make_prediction_with_model(QUANTIZED_MODEL_PATH, "QUANTISIERTES TFLite MODELL", show_output=True, scaler=scaler)
