@@ -78,7 +78,64 @@ Für die kurzfristige Prognose des Energieverbrauchs wurden drei Modell-Variante
 
 
 ## Hyperparameter-Suche
-...
+Die Hyperparameter-Suche erfolgt automatisiert mit **Keras Tuner** (Bayesian Optimization) und wird durch **Weights & Biases (W&B)** für ein umfassendes Experiment-Tracking ergänzt. Ziel ist es, optimale Modellarchitekturen und Trainingsparameter für die kurzfristige Energieverbrauchsprognose zu finden.
+
+### Vorgehen
+
+- **Suchstrategie:**  
+  Es wird die *Bayesian Optimization* von Keras Tuner eingesetzt, um die besten Hyperparameter-Kombinationen effizient zu finden.  
+- **Experiment-Tracking:**  
+  Alle Versuche und Ergebnisse werden mit W&B protokolliert, inklusive Modellarchitektur, Metriken und Hyperparameter-Werten.
+
+### Getunte Hyperparameter
+
+Folgende Parameter werden im Suchraum variiert:
+
+- **Modelltyp:**  
+  - `model_type`: Auswahl zwischen `'lstm'`, `'gru'`, `'bidirectional_lstm'`
+- **Rekurrente Layer:**  
+  - Anzahl Units der ersten Schicht (`*_units_1`): 32–256  
+  - Aktivierungsfunktion der ersten Schicht (`*_activation_1`): `'relu'` oder `'tanh'`  
+  - `return_sequences_1`: Gibt an, ob eine zweite rekurrente Schicht folgt  
+  - Anzahl Units der zweiten Schicht (`*_units_2`): 16–128 (falls zweite Schicht aktiv)  
+  - Aktivierungsfunktion der zweiten Schicht (`*_activation_2`): `'relu'` oder `'tanh'`  
+- **Dropout:**  
+  - Nach jeder rekurrenten Schicht (`dropout_1`, `dropout_2`): 0.0–0.5 (Schrittweite 0.1)
+- **Dense Layer:**  
+  - Anzahl Units (`dense_units`): 16–128 (Schrittweite 16)
+- **Optimierer:**  
+  - Lernrate (`learning_rate`): 1e-4 – 1e-2 (logarithmisch gesampelt)
+
+### Ablauf der Suche
+
+1. **Initialisierung:**  
+   - Das Datenset wird vorbereitet und in Trainings-/Validierungsbatches aufgeteilt.
+   - Die Eingabe- und Ausgabeformen werden automatisch erkannt.
+2. **Tuning-Phase:**  
+   - Für jede Hyperparameter-Kombination wird ein Modell gebaut, trainiert und auf dem Validierungsset evaluiert.
+   - Frühes Stoppen (`EarlyStopping`) und Lernraten-Reduktion (`ReduceLROnPlateau`) sorgen für effizientes Training.
+   - Die besten Ergebnisse werden als Modell-Checkpoint gespeichert.
+3. **Auswertung:**  
+   - Die besten Hyperparameter werden übernommen und das finale Modell erneut auf dem gesamten Trainingsdatensatz trainiert.
+   - Alle Ergebnisse und Metriken werden in W&B gespeichert.
+
+### Beispiel-Aufruf (CLI)
+
+`python src/srv/TrainModel.py`
+
+Optional kann mit `--test_mode` ein schneller Testlauf mit reduziertem Datensatz durchgeführt werden:
+
+`python src/srv/TrainModel.py --test-mode`
+
+### Wichtige Hinweise
+
+- **Reproduzierbarkeit:**  
+  Zufallsseed ist gesetzt, sodass Ergebnisse zwischen Läufen vergleichbar bleiben.
+- **Ablageorte:**  
+  - Tuner- und W&B-Resultate werden automatisch unter `/data/tuner_results` bzw. `/data/wandb` gespeichert.
+  - Modell-Checkpoints werden im Verzeichnis `models/` abgelegt.
+- **Experiment-Tracking:**  
+  Für eine öffentliche W&B-Projektverwaltung kann das Projekt nach dem ersten Lauf in der Web-Oberfläche auf "public" gestellt werden.
 
 ## Visualisierung & Dashboard
 
