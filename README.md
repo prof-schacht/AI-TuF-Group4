@@ -136,10 +136,6 @@ Die Streamlit-App lädt Daten, führt Vorhersagen durch und visualisiert Ergebni
 - Berechnung der Attributionswerte mittels Integrated Gradients
 - Anzeige als Heatmap (matplotlib)
 
-## Setup & Nutzung
-
-### Voraussetzungen
-
 ## Edge-Optimierung
 
 Die Edge-Optimierung besteht aus zwei Teilen. Zum einen die Konvertierung des Keras Modells in eine TensorFlow-Lite Modell und zum anderen die Ausführung auf einem Edge-Gerät. In diesem Beispile wurde dabei ein RaspberryPi verwendet. 
