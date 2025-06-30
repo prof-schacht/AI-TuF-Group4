@@ -85,7 +85,7 @@ Die Hyperparameter-Suche erfolgt automatisiert mit **Keras Tuner** (Bayesian Opt
 - **Suchstrategie:**  
   Es wird die *Bayesian Optimization* von Keras Tuner eingesetzt, um die besten Hyperparameter-Kombinationen effizient zu finden.  
 - **Experiment-Tracking:**  
-  Alle Versuche und Ergebnisse werden mit W&B protokolliert, inklusive Modellarchitektur, Metriken und Hyperparameter-Werten.
+  Alle Versuche und Ergebnisse werden mit W&B protokolliert, inklusive Modellarchitektur, Metriken und Hyperparameter-Werten. https://wandb.ai/sebastiangerz-hochschule-aalen/power-consumption-forecasting-prod?nw=nwusersebastiangerz
 
 ### Getunte Hyperparameter
 
