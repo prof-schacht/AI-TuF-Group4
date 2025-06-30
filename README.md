@@ -84,36 +84,6 @@ Für die kurzfristige Prognose des Energieverbrauchs wurden drei Modell-Variante
 
 Diese Anwendung ermöglicht die kurzfristige Prognose des Haushaltsstromverbrauchs auf Basis stündlicher Zeitreihendaten. Die Applikation basiert auf TensorFlow, nutzt ein kompaktes `.tflite`-Modell und bietet über ein interaktives Streamlit-Dashboard Einblicke in Vorhersagen und Modellgüte.
 
-## 🔄 Datenaufbereitung
-
-Die Klasse `LoadAndPrepareData` bereitet Rohdaten aus der `household_power_consumption.txt`-Datei für TensorFlow-kompatible Modelle auf. Hauptschritte:
-
-### 1. Einlesen & Bereinigung
-
-- Lese Roh-Zeitreihen (Date + Time) aus `.txt`
-- Erzeuge kombinierten Datetime-Timestamp
-- Interpoliere fehlende Werte
-- (Optional) Kürze Datenmenge für schnelle Tests
-
-### 2. Resampling
-
-- Aggregiere Minutendaten zu Stundenwerten (`resample_rule="h"`)
-
-### 3. Zeitreihen-Split
-
-- Aufteilung in Training / Validation / Test (Verhältnis: 70 / 15 / 15)
-- Zeitlich strikt getrennt (Vermeidung von Data Leakage)
-
-### 4. Feature Scaling
-
-- Alle numerischen Features (z. B. `Global_active_power`, `Voltage`, ...) werden skaliert
-- Ziel: vergleichbare Wertebereiche
-
-### 5. Sliding Window
-
-- Eingabefenster der Länge `window_size`, Zielwerte der Länge `horizon`
-- TensorFlow Dataset-Objekte werden erstellt und gepackt
-
 ## Dashboard-Funktionen (`dashboard.py`)
 
 Die Streamlit-App lädt Daten, führt Vorhersagen durch und visualisiert Ergebnisse inkl. Feature-Wichtigkeit.
