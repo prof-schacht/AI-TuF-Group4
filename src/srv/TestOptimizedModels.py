@@ -359,7 +359,7 @@ class TestOptimizedModels:
                 true_val = y_true[i, j]
                 abs_error = abs(pred_val - true_val)
                 
-                # Verbesserte MAPE-Berechnung mit Schwellenwert
+                # MAPE-Berechnung 
                 if abs(true_val) < 1e-6:  # Sehr kleine Werte
                     rel_error = 0  # Ignoriere bei sehr kleinen wahren Werten
                     near_zero_count += 1
@@ -509,8 +509,8 @@ class TestOptimizedModels:
         mape_winner = mae_names[mape_best_idx]
         
         comparison_data = [
-            ["MAE", f"{keras_accuracy['mae']:.3f}", f"{normal_accuracy['mae']:.3f}", f"{quantized_accuracy['mae']:.3f}", f"{GREEN}{mae_winner}{RESET}"],
-            ["RMSE", f"{keras_accuracy['rmse']:.3f}", f"{normal_accuracy['rmse']:.3f}", f"{quantized_accuracy['rmse']:.3f}", f"{GREEN}{rmse_winner}{RESET}"],
+            ["MAE [kw]", f"{keras_accuracy['mae']:.3f}", f"{normal_accuracy['mae']:.3f}", f"{quantized_accuracy['mae']:.3f}", f"{GREEN}{mae_winner}{RESET}"],
+            ["RMSE [kw]", f"{keras_accuracy['rmse']:.3f}", f"{normal_accuracy['rmse']:.3f}", f"{quantized_accuracy['rmse']:.3f}", f"{GREEN}{rmse_winner}{RESET}"],
             ["MAPE (%)", f"{keras_accuracy['mape']:.2f}", f"{normal_accuracy['mape']:.2f}", f"{quantized_accuracy['mape']:.2f}", f"{GREEN}{mape_winner}{RESET}"],
         ]
         
