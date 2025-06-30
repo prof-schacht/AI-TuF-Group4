@@ -21,7 +21,7 @@ DATA_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/
 KERAS_MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src/srv/models/best_model.keras"))
 TFLITE_MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src/edgeDevice/models/model.tflite"))
 WINDOW_SIZE = 24
-DEFAULT_HORIZON = 6
+DEFAULT_HORIZON = 3
 
 # ----- Streamlit UI Setup -----
 st.set_page_config(page_title="Power Forecast Dashboard", layout="wide")
@@ -29,7 +29,7 @@ st.title("\U0001F32C️ Household Power Consumption Forecast")
 
 # ----- Sidebar -----
 st.sidebar.header("Vorhersage-Steuerung")
-forecast_horizon = st.sidebar.slider("Forecast Horizon (Stunden)", 1, 24, DEFAULT_HORIZON)
+forecast_horizon = st.sidebar.slider("Forecast Horizon (Stunden)", 1, 6, DEFAULT_HORIZON)
 show_feature_importance = st.sidebar.checkbox("Show Feature Importance (IG)", value=True)
 
 # ----- Verifikation des Modellpfads -----
@@ -39,12 +39,12 @@ else:
     st.success(f"✅ TFLite Model gefunden: {TFLITE_MODEL_PATH}")
 
 # ----- Daten vorbereiten (einmalig) -----
-@st.cache_resource
-def prepare_data():
+@st.cache_resource(ttl=30)
+def prepare_data(horizon):
     loader = LoadAndPrepareData(
         filepath=DATA_PATH,
         window_size=WINDOW_SIZE,
-        horizon=forecast_horizon,
+        horizon=horizon,
         batch_size=1,
         resample_rule="h"
     )
@@ -85,11 +85,11 @@ def integrated_gradients(model, input_tensor, baseline=None, steps=50):
     grads = tape.gradient(preds, interpolated)
     avg_grads = tf.reduce_mean(grads, axis=0).numpy()
     attributions = (input_tensor - baseline) * avg_grads
-    return attributions.squeeze()  # shape: (window_size, num_features)
+    return attributions.numpy().squeeze()  # shape: (window_size, num_features)
 
 # ----- Hauptlogik -----
 with st.spinner("Lade Daten und Modelle..."):
-    x_input, y_true, scaler = prepare_data()
+    x_input, y_true, scaler = prepare_data(forecast_horizon)
     y_pred = predict_tflite(x_input)
 
     y_pred_flat = y_pred.reshape(-1, y_pred.shape[-1])
@@ -100,23 +100,36 @@ with st.spinner("Lade Daten und Modelle..."):
 
 # ----- Plot Forecast -----
 st.subheader(f"Forecast: Nächste {forecast_horizon} Stunden")
+
+min_len = min(forecast_horizon, y_pred_orig.shape[0], y_true_orig.shape[0])
+
 df_plot = pd.DataFrame({
-    "Stunde": list(range(1, forecast_horizon+1)),
-    "Prediction": y_pred_orig[:, 0],
-    "Ground Truth": y_true_orig[:, 0]
+    "Stunde": list(range(1, min_len + 1)),
+    "Prediction": y_pred_orig[:min_len, 0],
+    "Ground Truth": y_true_orig[:min_len, 0]
 })
+
 fig = px.line(df_plot, x="Stunde", y=["Prediction", "Ground Truth"], markers=True)
 fig.update_traces(selector=dict(name="Prediction"), line=dict(dash="dash", color="blue"))
 fig.update_traces(selector=dict(name="Ground Truth"), line=dict(color="red"))
+fig.update_xaxes(range=[1, min_len])  # Explicitly set x-axis range
 st.plotly_chart(fig, use_container_width=True)
 
 # ----- Metriken -----
 st.subheader("\U0001F4CA Modellgüte")
+
+# Ensure all arrays are the same length
+min_len = min(y_true_orig.shape[0], y_pred_orig.shape[0], forecast_horizon)
+
+mae = mean_absolute_error(y_true_orig[:min_len], y_pred_orig[:min_len])
+rmse = np.sqrt(mean_squared_error(y_true_orig[:min_len], y_pred_orig[:min_len]))
+r2 = r2_score(y_true_orig[:min_len], y_pred_orig[:min_len])
+
 col1, col2, col3 = st.columns(3)
-col1.metric("MAE", f"{mean_absolute_error(y_true_orig, y_pred_orig):.2f} kW")
-rmse = np.sqrt(mean_squared_error(y_true_orig, y_pred_orig))
+col1.metric("MAE", f"{mae:.2f} kW")
 col2.metric("RMSE", f"{rmse:.2f} kW")
-col3.metric("R²", f"{r2_score(y_true_orig, y_pred_orig):.2f}")
+col3.metric("R²", f"{r2:.2f}")
+
 
 # ----- Feature Importance Heatmap -----
 if show_feature_importance:
